@@ -1,0 +1,1441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>City Route Planner — India</title>
+  <meta name="description" content="Find the best route between Indian cities using Dijkstra's algorithm. Supports driving, walking, train, and flight modes." />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    html, body { height: 100%; margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: 'Inter', 'Segoe UI', sans-serif;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #left-panel {
+      width: 400px;
+      min-width: 380px;
+      background: #ffffff;
+      height: 100vh;
+      overflow-y: auto;
+      box-shadow: 4px 0 24px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      z-index: 500;
+      flex-shrink: 0;
+    }
+    #right-panel {
+      flex: 1;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: #e8f0fe;
+      overflow: hidden;
+    }
+    .map-header {
+      height: 70px;
+      min-height: 70px;
+      padding: 0 24px;
+      background: white;
+      border-bottom: 1.5px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 400;
+      flex-shrink: 0;
+    }
+    #map {
+      flex: 1;
+      min-height: 0;
+      z-index: 1;
+    }
+    .left-panel-header {
+      background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 60%, #3b82f6 100%);
+      padding: 22px 24px 18px;
+      color: white;
+      flex-shrink: 0;
+    }
+    .left-panel-header h1 { font-size: 21px; font-weight: 700; letter-spacing: -0.3px; }
+    .left-panel-header p { font-size: 12px; opacity: 0.8; margin-top: 4px; }
+    .tabs {
+      display: flex;
+      background: #f8fafc;
+      border-bottom: 2px solid #e2e8f0;
+      flex-shrink: 0;
+    }
+    .tab-btn {
+      flex: 1; padding: 12px 6px; font-size: 11px; font-weight: 600;
+      color: #64748b; background: none; border: none; cursor: pointer;
+      border-bottom: 2px solid transparent; margin-bottom: -2px;
+      transition: all 0.2s; letter-spacing: 0.3px;
+    }
+    .tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; background: white; }
+    .tab-btn:hover:not(.active) { background: #f1f5f9; }
+    .panel-body { padding: 20px; flex: 1; }
+    .form-group { margin-bottom: 15px; }
+    .form-label {
+      display: block; font-size: 11px; font-weight: 700; color: #475569;
+      margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.6px;
+    }
+    .form-select, .form-input {
+      width: 100%; padding: 10px 14px;
+      border: 1.5px solid #e2e8f0; border-radius: 10px;
+      font-size: 14px; font-family: inherit; color: #1e293b;
+      background: #f8fafc; transition: border-color 0.2s, box-shadow 0.2s;
+      outline: none; appearance: none; -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 12px center;
+      padding-right: 32px;
+    }
+    .form-input { background-image: none; padding-right: 14px; }
+    .form-select:focus, .form-input:focus {
+      border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
+      background: white;
+    }
+    .section-title {
+      font-size: 11px; font-weight: 700; color: #475569;
+      text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px;
+    }
+    .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .mode-card {
+      border: 2px solid #e2e8f0; border-radius: 12px; padding: 11px 10px;
+      cursor: pointer; transition: all 0.2s; background: #f8fafc;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .mode-card:hover { border-color: #93c5fd; background: #eff6ff; }
+    .mode-card.selected { border-color: #2563eb; background: #eff6ff; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+    .mode-icon { font-size: 20px; }
+    .mode-name { font-size: 13px; font-weight: 600; color: #1e293b; }
+    .mode-card input[type=radio] { display: none; }
+    .optimize-row { display: flex; gap: 10px; margin-bottom: 15px; }
+    .optimize-btn {
+      flex: 1; padding: 8px; border: 1.5px solid #e2e8f0; border-radius: 8px;
+      font-size: 12px; font-weight: 600; color: #64748b; background: #f8fafc;
+      cursor: pointer; transition: all 0.2s; font-family: inherit;
+    }
+    .optimize-btn.active { border-color: #2563eb; color: #2563eb; background: #eff6ff; }
+    .find-btn {
+      width: 100%; padding: 13px; background: linear-gradient(135deg, #1d4ed8, #2563eb);
+      color: white; border: none; border-radius: 12px; font-size: 15px; font-weight: 700;
+      cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 14px rgba(37,99,235,0.35);
+      letter-spacing: 0.2px; font-family: inherit;
+    }
+    .find-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(37,99,235,0.45); }
+    .find-btn:active { transform: none; }
+    .find-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    .result-box {
+      margin-top: 16px; background: #f8fafc;
+      border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 15px;
+    }
+    .result-path { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
+    .path-city {
+      background: #2563eb; color: white; padding: 4px 10px;
+      border-radius: 20px; font-size: 12px; font-weight: 500;
+    }
+    .path-arrow { color: #94a3b8; font-size: 14px; align-self: center; }
+    .result-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stat-card {
+      background: white; border: 1px solid #e2e8f0;
+      border-radius: 8px; padding: 10px; text-align: center;
+    }
+    .stat-value { font-size: 17px; font-weight: 700; color: #1e293b; }
+    .stat-label { font-size: 11px; color: #64748b; margin-top: 2px; }
+    .error-box {
+      margin-top: 12px; background: #fef2f2; border: 1.5px solid #fca5a5;
+      border-radius: 10px; padding: 11px 13px; color: #dc2626; font-size: 13px; font-weight: 500;
+    }
+    .loading-box { margin-top: 12px; text-align: center; padding: 14px; color: #64748b; font-size: 13px; }
+    .spinner {
+      display: inline-block; width: 17px; height: 17px;
+      border: 2px solid #e2e8f0; border-top-color: #2563eb;
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+      margin-right: 8px; vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .closures-section { margin-bottom: 15px; }
+    .closure-list {
+      max-height: 150px; overflow-y: auto; border: 1.5px solid #e2e8f0;
+      border-radius: 10px; background: #f8fafc;
+    }
+    .closure-item {
+      display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+      border-bottom: 1px solid #f1f5f9; font-size: 13px; cursor: pointer;
+      transition: background 0.15s;
+    }
+    .closure-item:last-child { border-bottom: none; }
+    .closure-item:hover { background: #f1f5f9; }
+    .closure-item input[type=checkbox] { accent-color: #2563eb; width: 14px; height: 14px; }
+    .closure-item.closed { color: #94a3b8; text-decoration: line-through; }
+    .reopen-btn {
+      width: 100%; padding: 9px; margin-top: 8px; border: 1.5px solid #dc2626;
+      border-radius: 8px; background: #fff; color: #dc2626; font-size: 13px;
+      font-weight: 600; cursor: pointer; transition: all 0.2s; font-family: inherit;
+    }
+    .reopen-btn:hover { background: #fef2f2; }
+    .reachable-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+    .reachable-table th {
+      background: #f1f5f9; padding: 8px 10px; text-align: left;
+      font-weight: 600; color: #475569; font-size: 11px; text-transform: uppercase;
+    }
+    .reachable-table td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
+    .reachable-table tr:last-child td { border-bottom: none; }
+    .reachable-table tr:hover td { background: #f8fafc; }
+    .table-wrap {
+      border: 1.5px solid #e2e8f0; border-radius: 10px; overflow: hidden;
+      margin-top: 10px; max-height: 250px; overflow-y: auto;
+    }
+    .trip-cities { margin-bottom: 14px; }
+    .city-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .city-tag {
+      background: #eff6ff; border: 1.5px solid #bfdbfe; color: #1d4ed8;
+      padding: 5px 10px; border-radius: 20px; font-size: 12px; font-weight: 500;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .city-tag button {
+      background: none; border: none; color: #94a3b8; cursor: pointer;
+      font-size: 14px; line-height: 1; padding: 0;
+    }
+    .city-tag button:hover { color: #dc2626; }
+    .add-city-row { display: flex; gap: 8px; margin-bottom: 8px; }
+    .add-city-select { flex: 1; }
+    .add-btn {
+      padding: 8px 13px; background: #2563eb; color: white; border: none;
+      border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+      white-space: nowrap; transition: background 0.2s; font-family: inherit;
+    }
+    .add-btn:hover { background: #1d4ed8; }
+    .trip-result { background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 15px; margin-top: 14px; }
+    .trip-order { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 12px; }
+    .trip-stop { display: flex; align-items: center; gap: 5px; }
+    .stop-num {
+      width: 22px; height: 22px; background: #2563eb; color: white;
+      border-radius: 50%; font-size: 11px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .stop-name { font-size: 13px; font-weight: 600; color: #1e293b; }
+    .trip-arrow { color: #94a3b8; font-size: 16px; }
+    .map-label {
+      font-size: 11px; font-weight: 700; color: #2563eb; background: #eff6ff;
+      border: 1.5px solid #bfdbfe; padding: 3px 10px; border-radius: 20px;
+      letter-spacing: 1px; text-transform: uppercase;
+    }
+    .map-title { font-size: 17px; font-weight: 700; color: #1e293b; }
+    .map-badge {
+      background: linear-gradient(135deg, #1d4ed8, #2563eb); color: white;
+      padding: 7px 15px; border-radius: 20px; font-size: 13px; font-weight: 600;
+      box-shadow: 0 2px 8px rgba(37,99,235,0.3); white-space: nowrap;
+    }
+    .unreachable-box {
+      margin-top: 12px; background: #fff7ed; border: 1.5px solid #fdba74;
+      border-radius: 10px; padding: 11px 13px;
+    }
+    .unreachable-box h4 { font-size: 11px; font-weight: 700; color: #c2410c; margin-bottom: 6px; text-transform: uppercase; }
+    .unreachable-list { display: flex; flex-wrap: wrap; gap: 5px; }
+    .unreachable-tag {
+      background: #fed7aa; color: #9a3412; padding: 3px 9px;
+      border-radius: 12px; font-size: 11px; font-weight: 500;
+    }
+    .divider { height: 1px; background: #e2e8f0; margin: 14px 0; }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+
+    /* Google Maps Route Callout & POI Styling */
+    .google-eta-callout {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      transform: translate(-50%, -100%);
+      cursor: pointer;
+      filter: drop-shadow(0 3px 8px rgba(0,0,0,0.3));
+      user-select: none;
+      z-index: 2000;
+      pointer-events: auto;
+    }
+    .google-eta-callout .eta-content {
+      background: #ffffff;
+      border-radius: 8px;
+      padding: 6px 12px;
+      border: 1px solid rgba(0,0,0,0.12);
+      text-align: center;
+      white-space: nowrap;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .google-eta-callout .eta-time {
+      font-size: 14px;
+      font-weight: 700;
+      color: #202124;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      justify-content: center;
+    }
+    .google-eta-callout .eta-dist {
+      font-size: 11px;
+      font-weight: 500;
+      color: #5f6368;
+      margin-top: 2px;
+    }
+    .google-eta-callout .eta-arrow {
+      width: 0;
+      height: 0;
+      border-left: 7px solid transparent;
+      border-right: 7px solid transparent;
+      border-top: 7px solid #ffffff;
+      margin-top: -1px;
+    }
+    .google-eta-callout.alt .eta-content {
+      background: #f8f9fa;
+      border-color: #dadce0;
+    }
+    .google-eta-callout.alt .eta-time {
+      color: #5f6368;
+    }
+    .google-eta-callout.alt .eta-arrow {
+      border-top-color: #f8f9fa;
+    }
+    .gm-poi-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #ffffff;
+      border-radius: 14px;
+      padding: 2.5px 9px 2.5px 3px;
+      box-shadow: 0 1.5px 5px rgba(0,0,0,0.25);
+      font-size: 11px;
+      font-weight: 600;
+      color: #6a1b9a;
+      white-space: nowrap;
+      border: 1px solid #e1bee7;
+      user-select: none;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .gm-poi-badge:hover {
+      transform: scale(1.06);
+      box-shadow: 0 2px 8px rgba(106,27,154,0.35);
+    }
+    .gm-poi-icon {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #8e24aa;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+    }
+    .swap-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 1.5px solid #e2e8f0;
+      background: #ffffff;
+      color: #1a73e8;
+      font-size: 15px;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      margin: -6px auto 10px;
+    }
+    .swap-btn:hover {
+      background: #eff6ff;
+      border-color: #1a73e8;
+      transform: rotate(180deg);
+    }
+  </style>
+</head>
+<body>
+
+  <div id="left-panel">
+    <div id="react-root"></div>
+  </div>
+
+  <div id="right-panel">
+    <div class="map-header">
+      <div>
+        <div class="map-label">LIVE ROUTE VIEW</div>
+        <div class="map-title">City Route Map</div>
+      </div>
+      <div class="map-badge" id="map-badge">Select two cities</div>
+    </div>
+    <div id="map"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script>
+    var MAP_INSTANCE = null;
+    var MAP_MARKERS = [];
+    var MAP_POLYLINES = [];
+    var CURRENT_CITY_CLICK_HANDLER = null;
+
+    var MODE_COLORS = {
+      driving: "#1a73e8",
+      walking: "#16a34a",
+      train: "#ea580c",
+      flight: "#dc2626"
+    };
+
+    function initMap() {
+      var mapEl = document.getElementById("map");
+      if (!mapEl || MAP_INSTANCE) return;
+      MAP_INSTANCE = L.map("map", { center: [19.0, 73.2], zoom: 8, zoomControl: true });
+
+      // Official Google Maps raster tiles matching user's screenshot exactly
+      var googleStreetTiles = L.tileLayer("https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}", {
+        attribution: '&copy; Google Maps',
+        maxZoom: 20,
+        subdomains: ["0", "1", "2", "3"]
+      });
+
+      var googleTerrainTiles = L.tileLayer("https://mt{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}", {
+        attribution: '&copy; Google Maps',
+        maxZoom: 20,
+        subdomains: ["0", "1", "2", "3"]
+      });
+
+      var googleSatelliteTiles = L.tileLayer("https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}", {
+        attribution: '&copy; Google Maps',
+        maxZoom: 20,
+        subdomains: ["0", "1", "2", "3"]
+      });
+
+      var osmTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap contributors",
+        maxZoom: 19
+      });
+
+      // Default to Google Maps
+      googleStreetTiles.addTo(MAP_INSTANCE);
+
+      L.control.layers({
+        "Google Maps (Default)": googleStreetTiles,
+        "Google Terrain": googleTerrainTiles,
+        "Google Satellite": googleSatelliteTiles,
+        "OpenStreetMap": osmTiles
+      }, null, { position: "topright" }).addTo(MAP_INSTANCE);
+
+      MAP_INSTANCE.invalidateSize();
+    }
+
+    function setMapBadge(text) {
+      var el = document.getElementById("map-badge");
+      if (el) el.textContent = text;
+    }
+
+    function clearPolylines() {
+      for (var i = 0; i < MAP_POLYLINES.length; i++) {
+        if (MAP_POLYLINES[i]) MAP_POLYLINES[i].remove();
+      }
+      MAP_POLYLINES = [];
+    }
+
+    // Google Maps concentric target origin marker (⊙)
+    function getGoogleOriginIcon(name) {
+      return L.divIcon({
+        html: '<div style="width:18px;height:18px;background:#ffffff;border:3.5px solid #202124;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;">' +
+                '<div style="width:6px;height:6px;background:#202124;border-radius:50%;"></div>' +
+              '</div>',
+        iconSize: [18, 18],
+        iconAnchor: [9, 9],
+        className: ""
+      });
+    }
+
+    // Google Maps iconic red teardrop destination pin (📍)
+    function getGoogleDestIcon(name) {
+      return L.divIcon({
+        html: '<div style="position:relative;width:30px;height:42px;display:flex;flex-direction:column;align-items:center;">' +
+                '<svg width="30" height="42" viewBox="0 0 30 42" fill="none" style="filter: drop-shadow(0 3px 6px rgba(0,0,0,0.45));">' +
+                  '<path d="M15 0C6.716 0 0 6.716 0 15C0 26.5 15 42 15 42C15 42 30 26.5 30 15C30 6.716 23.284 0 15 0Z" fill="#ea4335"/>' +
+                  '<circle cx="15" cy="14" r="5.5" fill="white"/>' +
+                '</svg>' +
+              '</div>',
+        iconSize: [30, 42],
+        iconAnchor: [15, 42],
+        className: ""
+      });
+    }
+
+    // Floating route ETA callout badge with car icon and arrow notch
+    function getRouteEtaIcon(timeStr, distStr, isAlt) {
+      return L.divIcon({
+        html: '<div class="google-eta-callout' + (isAlt ? ' alt' : '') + '">' +
+                '<div class="eta-content">' +
+                  '<div class="eta-time">' +
+                    '<svg width="15" height="15" viewBox="0 0 24 24" fill="' + (isAlt ? '#5f6368' : '#1a73e8') + '" style="margin-right:4px;flex-shrink:0;"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg>' +
+                    '<span>' + timeStr + '</span>' +
+                  '</div>' +
+                  '<div class="eta-dist">' + distStr + '</div>' +
+                '</div>' +
+                '<div class="eta-arrow"></div>' +
+              '</div>',
+        className: "",
+        iconAnchor: [45, 52]
+      });
+    }
+
+    function getGoogleWaypointIcon(stepNum) {
+      return L.divIcon({
+        html: '<div style="width:24px;height:24px;background:#ffffff;border:3px solid #1a73e8;border-radius:50%;box-shadow:0 2px 7px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;color:#1a73e8;font-weight:700;font-size:11px;font-family:Inter,sans-serif;">' +
+                stepNum +
+              '</div>',
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+        className: ""
+      });
+    }
+
+    function getNormalCityIcon() {
+      return L.divIcon({
+        html: '<div style="width:12px;height:12px;background:#2563eb;border:2.5px solid white;border-radius:50%;box-shadow:0 2px 5px rgba(0,0,0,0.4);"></div>',
+        iconSize: [12, 12],
+        iconAnchor: [6, 6],
+        className: ""
+      });
+    }
+
+    // Famous transit landmarks & POIs along routes (matching user's screenshot)
+    var ROUTE_POIS = [
+      { name: "Chhatrapati Shivaji Maharaj Terminus", lat: 18.9401, lng: 72.8354, icon: "🏛️" },
+      { name: "Shivganga Waterpark and Resort", lat: 18.9950, lng: 73.1200, icon: "🎡" },
+      { name: "Karnala Bird Sanctuary", lat: 18.8917, lng: 73.1189, icon: "🦜" },
+      { name: "Khalapur", lat: 18.8315, lng: 73.2867, icon: "📍" },
+      { name: "Khopoli", lat: 18.7865, lng: 73.3444, icon: "🏙️" },
+      { name: "Della Adventure Park", lat: 18.7845, lng: 73.4170, icon: "🎢" },
+      { name: "Lonavala", lat: 18.7557, lng: 73.4091, icon: "⛰️" },
+      { name: "Lohagad Fort", lat: 18.7094, lng: 73.4794, icon: "🏰" },
+      { name: "Talegaon Dabhade", lat: 18.7344, lng: 73.6766, icon: "📍" },
+      { name: "Faridabad", lat: 28.4089, lng: 77.3178, icon: "🏙️" },
+      { name: "Mathura", lat: 27.4924, lng: 77.6737, icon: "🛕" },
+      { name: "Vrindavan", lat: 27.5806, lng: 77.7006, icon: "🛕" },
+      { name: "Taj Mahal", lat: 27.1751, lng: 78.0421, icon: "🏛️" },
+      { name: "Vadodara", lat: 22.3072, lng: 73.1812, icon: "🏙️" },
+      { name: "Surat Diamond Bourse", lat: 21.1702, lng: 72.8311, icon: "💎" },
+      { name: "Hosur", lat: 12.7409, lng: 77.8253, icon: "📍" },
+      { name: "Vellore Fort", lat: 12.9202, lng: 79.1325, icon: "🏰" }
+    ];
+
+    function distKm(lat1, lon1, lat2, lon2) {
+      var dLat = (lat2 - lat1) * Math.PI / 180;
+      var dLon = (lon2 - lon1) * Math.PI / 180;
+      var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+      return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    function renderNearbyPOIs(coords, skipNames) {
+      if (!coords || coords.length === 0) return;
+      var skip = {};
+      if (skipNames) skipNames.forEach(function(n) { skip[n.toLowerCase()] = true; });
+
+      ROUTE_POIS.forEach(function(poi) {
+        if (skip[poi.name.toLowerCase()]) return;
+        var minDist = 999;
+        // Check sampling points along route
+        var step = Math.max(1, Math.floor(coords.length / 50));
+        for (var i = 0; i < coords.length; i += step) {
+          var d = distKm(poi.lat, poi.lng, coords[i][0], coords[i][1]);
+          if (d < minDist) minDist = d;
+          if (minDist <= 12) break;
+        }
+        if (minDist <= 14) {
+          var poiMarker = L.marker([poi.lat, poi.lng], {
+            icon: L.divIcon({
+              html: '<div class="gm-poi-badge">' +
+                      '<div class="gm-poi-icon">' + poi.icon + '</div>' +
+                      '<div class="gm-poi-name">' + poi.name + '</div>' +
+                    '</div>',
+              className: "",
+              iconAnchor: [12, 12]
+            }),
+            zIndexOffset: 700
+          }).addTo(MAP_INSTANCE);
+          poiMarker.bindTooltip(poi.name, { permanent: false, direction: "top" });
+          MAP_MARKERS.push(poiMarker);
+        }
+      });
+    }
+
+    function createCurvedFlightArc(p1, p2) {
+      var lat1 = p1[0], lng1 = p1[1];
+      var lat2 = p2[0], lng2 = p2[1];
+      var points = [];
+      var steps = 40;
+      var midLat = (lat1 + lat2) / 2;
+      var midLng = (lng1 + lng2) / 2;
+      var dLat = lat2 - lat1;
+      var dLng = lng2 - lng1;
+      var dist = Math.sqrt(dLat * dLat + dLng * dLng);
+      if (dist === 0) return [p1, p2];
+      var normLat = -dLng / dist;
+      var normLng = dLat / dist;
+      var curveHeight = dist * 0.16;
+      var controlLat = midLat + normLat * curveHeight;
+      var controlLng = midLng + normLng * curveHeight;
+      for (var i = 0; i <= steps; i++) {
+        var t = i / steps;
+        var lat = (1 - t) * (1 - t) * lat1 + 2 * (1 - t) * t * controlLat + t * t * lat2;
+        var lng = (1 - t) * (1 - t) * lng1 + 2 * (1 - t) * t * controlLng + t * t * lng2;
+        points.push([lat, lng]);
+      }
+      return points;
+    }
+
+    function updateRouteMarkers(path, cityMap, onClickCity) {
+      if (!MAP_INSTANCE || !path || !cityMap) return;
+      var pathSet = {};
+      for (var p = 0; p < path.length; p++) {
+        pathSet[path[p]] = p;
+      }
+      var clickFn = onClickCity || CURRENT_CITY_CLICK_HANDLER;
+
+      for (var i = 0; i < MAP_MARKERS.length; i++) MAP_MARKERS[i].remove();
+      MAP_MARKERS = [];
+
+      var cityNames = Object.keys(cityMap);
+      for (var j = 0; j < cityNames.length; j++) {
+        (function(cName) {
+          var city = cityMap[cName];
+          if (!city) return;
+          var icon;
+          var zIndex = 100;
+          var tooltipText = cName;
+
+          if (cName === path[0]) {
+            // Origin marker (⊙)
+            icon = getGoogleOriginIcon(cName);
+            zIndex = 1000;
+            tooltipText = "Start: " + cName;
+          } else if (cName === path[path.length - 1]) {
+            // Destination marker (📍)
+            icon = getGoogleDestIcon(cName);
+            zIndex = 1000;
+            tooltipText = cName;
+          } else if (pathSet[cName] !== undefined) {
+            var stepNum = pathSet[cName];
+            icon = getGoogleWaypointIcon(stepNum);
+            zIndex = 500;
+            tooltipText = "Stop " + stepNum + ": " + cName;
+          } else {
+            icon = getNormalCityIcon();
+          }
+
+          var marker = L.marker([city.lat, city.lng], { icon: icon, zIndexOffset: zIndex }).addTo(MAP_INSTANCE);
+          marker.bindTooltip(tooltipText, { permanent: false, direction: "top", offset: [0, -10] });
+          if (clickFn) {
+            marker.on("click", function() { clickFn(cName); });
+          }
+          MAP_MARKERS.push(marker);
+        })(cityNames[j]);
+      }
+    }
+
+    function formatGoogleTime(minutes) {
+      var h = Math.floor(minutes / 60);
+      var m = Math.round(minutes % 60);
+      if (h > 0 && m > 0) return h + " hr " + m + " min";
+      if (h > 0) return h + " hr";
+      return m + " min";
+    }
+
+    async function drawRoute(path, cityMap, color, isFlight, mode, onClickCity) {
+      if (!MAP_INSTANCE || !path || path.length < 2) return;
+      mode = mode || "driving";
+      var coords = [];
+      for (var i = 0; i < path.length; i++) {
+        var c = cityMap[path[i]];
+        if (c) coords.push([c.lat, c.lng]);
+      }
+      if (coords.length < 2) return;
+
+      clearPolylines();
+
+      // Flights: draw smooth great-circle curved flight corridor
+      if (isFlight || mode === "flight") {
+        var arcCoords = [];
+        for (var f = 0; f < coords.length - 1; f++) {
+          var arc = createCurvedFlightArc(coords[f], coords[f + 1]);
+          arcCoords = arcCoords.concat(arc);
+        }
+        var flightShadow = L.polyline(arcCoords, {
+          color: "#312e81", weight: 6, opacity: 0.35, lineCap: "round"
+        }).addTo(MAP_INSTANCE);
+        var flightPoly = L.polyline(arcCoords, {
+          color: "#4f46e5", weight: 3.5, dashArray: "8 8", opacity: 0.95
+        }).addTo(MAP_INSTANCE);
+        flightPoly.bindTooltip("✈️ Flight Corridor: " + path.join(" → "));
+        MAP_POLYLINES.push(flightShadow, flightPoly);
+        MAP_INSTANCE.fitBounds(flightPoly.getBounds(), { padding: [60, 60] });
+        updateRouteMarkers(path, cityMap, onClickCity);
+        return;
+      }
+
+      // 1. Immediately render Google Maps preview route line (instant UI response)
+      var previewShadow = L.polyline(coords, {
+        color: "#174ea6", weight: 8.5, opacity: 0.35, lineCap: "round", lineJoin: "round"
+      }).addTo(MAP_INSTANCE);
+      var previewLine = L.polyline(coords, {
+        color: color || "#1a73e8", weight: 5.5, opacity: 0.6, dashArray: "6 6"
+      }).addTo(MAP_INSTANCE);
+      MAP_POLYLINES.push(previewShadow, previewLine);
+      MAP_INSTANCE.fitBounds(previewLine.getBounds(), { padding: [60, 60] });
+      updateRouteMarkers(path, cityMap, onClickCity);
+
+      // 2. Fetch exact road geometry following actual highways and curves like Google Maps
+      var profile = (mode === "walking") ? "walking" : "driving";
+      var coordsQuery = path.map(function(city) {
+        var pt = cityMap[city];
+        return pt.lng + "," + pt.lat;
+      }).join(";");
+
+      var exactRoadCoords = null;
+      var altRoadCoords = null;
+      var exactDistanceKm = null;
+      var exactDurationMin = null;
+      var altDistanceKm = null;
+      var altDurationMin = null;
+
+      // Query OSRM with alternatives enabled
+      try {
+        var ctrl = new AbortController();
+        var tId = setTimeout(function() { ctrl.abort(); }, 6000);
+        var oResp = await fetch(
+          "https://router.project-osrm.org/route/v1/" + profile + "/" + coordsQuery + "?overview=full&geometries=geojson&alternatives=true",
+          { signal: ctrl.signal }
+        );
+        clearTimeout(tId);
+        if (oResp.ok) {
+          var oData = await oResp.json();
+          if (oData.code === "Ok" && oData.routes && oData.routes.length > 0) {
+            exactRoadCoords = oData.routes[0].geometry.coordinates.map(function(pt) {
+              return [pt[1], pt[0]];
+            });
+            exactDistanceKm = Math.round(oData.routes[0].distance / 1000);
+            exactDurationMin = Math.round(oData.routes[0].duration / 60);
+
+            if (oData.routes.length > 1) {
+              altRoadCoords = oData.routes[1].geometry.coordinates.map(function(pt) {
+                return [pt[1], pt[0]];
+              });
+              altDistanceKm = Math.round(oData.routes[1].distance / 1000);
+              altDurationMin = Math.round(oData.routes[1].duration / 60);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("OSRM routing fallback:", err);
+      }
+
+      clearPolylines();
+
+      var finalCoords = exactRoadCoords || coords;
+      var routeIsExact = !!exactRoadCoords;
+
+      // Draw Alternate Route first (in light blue behind primary route) if available
+      if (altRoadCoords && mode === "driving") {
+        var altCasing = L.polyline(altRoadCoords, {
+          color: "#7090c0", weight: 7.5, opacity: 0.45, lineCap: "round", lineJoin: "round"
+        }).addTo(MAP_INSTANCE);
+        var altLine = L.polyline(altRoadCoords, {
+          color: "#8ab4f8", weight: 5, opacity: 0.9, lineCap: "round", lineJoin: "round"
+        }).addTo(MAP_INSTANCE);
+        MAP_POLYLINES.push(altCasing, altLine);
+
+        // Place alternate ETA pill
+        var altMidIdx = Math.floor(altRoadCoords.length * 0.65);
+        var altEtaPoint = altRoadCoords[altMidIdx];
+        var altTimeStr = formatGoogleTime(altDurationMin);
+        var altMarker = L.marker(altEtaPoint, {
+          icon: getRouteEtaIcon(altTimeStr, altDistanceKm + " km", true),
+          zIndexOffset: 1200
+        }).addTo(MAP_INSTANCE);
+        MAP_MARKERS.push(altMarker);
+      }
+
+      // Render Google Maps Primary Route: Deep Royal Blue with dark casing
+      if (mode === "walking") {
+        var walkShadow = L.polyline(finalCoords, {
+          color: "#0f5132", weight: 7, opacity: 0.35, lineCap: "round"
+        }).addTo(MAP_INSTANCE);
+        var walkLine = L.polyline(finalCoords, {
+          color: "#16a34a", weight: 4.5, dashArray: "1 8", lineCap: "round", opacity: 0.95
+        }).addTo(MAP_INSTANCE);
+        MAP_POLYLINES.push(walkShadow, walkLine);
+      } else if (mode === "train") {
+        var trainBorder = L.polyline(finalCoords, {
+          color: "#7c2d12", weight: 7, opacity: 0.85, lineCap: "round", lineJoin: "round"
+        }).addTo(MAP_INSTANCE);
+        var trainLine = L.polyline(finalCoords, {
+          color: "#ea580c", weight: 4.5, opacity: 0.95, lineCap: "round", lineJoin: "round"
+        }).addTo(MAP_INSTANCE);
+        var trainDashes = L.polyline(finalCoords, {
+          color: "#ffffff", weight: 2, dashArray: "7 7", opacity: 0.85
+        }).addTo(MAP_INSTANCE);
+        MAP_POLYLINES.push(trainBorder, trainLine, trainDashes);
+      } else {
+        // Driving: Thick Solid Royal Blue line matching Google Maps screenshot
+        var driveCasing = L.polyline(finalCoords, {
+          color: "#0d47a1", weight: 8.5, opacity: 0.7, lineCap: "round", lineJoin: "round"
+        }).addTo(MAP_INSTANCE);
+        var driveMain = L.polyline(finalCoords, {
+          color: "#1a73e8", weight: 6, opacity: 0.98, lineCap: "round", lineJoin: "round"
+        }).addTo(MAP_INSTANCE);
+        driveMain.bindTooltip("🚗 Google Maps Route: " + path.join(" → "));
+        MAP_POLYLINES.push(driveCasing, driveMain);
+      }
+
+      // Add Origin & Destination markers
+      updateRouteMarkers(path, cityMap, onClickCity);
+
+      // Render POIs along the road (Lonavala, Khopoli, Karnala, etc.)
+      renderNearbyPOIs(finalCoords, path);
+
+      // Place the signature Google Maps ETA Callout pill right on the road
+      var midIdx = Math.floor(finalCoords.length * 0.35);
+      var etaPoint = finalCoords[midIdx] || finalCoords[0];
+      var displayTime = exactDurationMin ? formatGoogleTime(exactDurationMin) : "Route";
+      var displayDist = (exactDistanceKm || Math.round(pathDistance(path, graphs[mode]))) + " km";
+
+      var etaMarker = L.marker(etaPoint, {
+        icon: getRouteEtaIcon(displayTime, displayDist, false),
+        zIndexOffset: 2000
+      }).addTo(MAP_INSTANCE);
+      MAP_MARKERS.push(etaMarker);
+
+      // Fit map to route bounds
+      MAP_INSTANCE.fitBounds(L.polyline(finalCoords).getBounds(), { padding: [60, 60] });
+
+      if (routeIsExact && exactDistanceKm) {
+        var badgeText = displayDist + "  ·  " + displayTime;
+        setMapBadge("🚗 " + badgeText);
+      }
+    }
+
+    function drawClosureLines(closedConnections, cityMap) {
+      for (var i = 0; i < closedConnections.length; i++) {
+        var a = cityMap[closedConnections[i].from];
+        var b = cityMap[closedConnections[i].to];
+        if (a && b) {
+          var poly = L.polyline([[a.lat, a.lng], [b.lat, b.lng]], {
+            color: "#ef4444", weight: 3, dashArray: "6 6", opacity: 0.75
+          }).addTo(MAP_INSTANCE);
+          poly.bindTooltip("🚧 Road Closed: " + closedConnections[i].from + " — " + closedConnections[i].to);
+          MAP_POLYLINES.push(poly);
+        }
+      }
+    }
+
+    function resetMarkers(cities, onClickCity) {
+      CURRENT_CITY_CLICK_HANDLER = onClickCity;
+      for (var i = 0; i < MAP_MARKERS.length; i++) MAP_MARKERS[i].remove();
+      MAP_MARKERS = [];
+      for (var j = 0; j < cities.length; j++) {
+        (function(city) {
+          var icon = getNormalCityIcon();
+          var marker = L.marker([city.lat, city.lng], { icon: icon }).addTo(MAP_INSTANCE);
+          marker.bindTooltip(city.name, { permanent: false, direction: "top", offset: [0, -9] });
+          marker.on("click", function() { if (onClickCity) onClickCity(city.name); });
+          MAP_MARKERS.push(marker);
+        })(cities[j]);
+      }
+    }
+
+    function highlightReachableMarkers(cities, reachableSet, sourceCity) {
+      for (var i = 0; i < MAP_MARKERS.length; i++) MAP_MARKERS[i].remove();
+      MAP_MARKERS = [];
+      for (var j = 0; j < cities.length; j++) {
+        (function(city) {
+          var isReach = reachableSet[city.name] || city.name === sourceCity;
+          var icon;
+          if (city.name === sourceCity) {
+            icon = getGoogleOriginIcon(city.name);
+          } else if (isReach) {
+            icon = L.divIcon({
+              html: '<div style="width:14px;height:14px;background:#16a34a;border:2.5px solid white;border-radius:50%;box-shadow:0 1px 5px rgba(0,0,0,0.35);"></div>',
+              iconSize: [14, 14], iconAnchor: [7, 7], className: ""
+            });
+          } else {
+            icon = L.divIcon({
+              html: '<div style="width:8px;height:8px;background:#cbd5e1;border:1.5px solid white;border-radius:50%;"></div>',
+              iconSize: [8, 8], iconAnchor: [4, 4], className: ""
+            });
+          }
+          var marker = L.marker([city.lat, city.lng], { icon: icon }).addTo(MAP_INSTANCE);
+          marker.bindTooltip(city.name + (isReach ? " (Reachable)" : " (Unreachable)"), { permanent: false, direction: "top" });
+          MAP_MARKERS.push(marker);
+        })(cities[j]);
+      }
+    }
+
+    function drawTripMarkers(cities, bestOrder) {
+      for (var i = 0; i < MAP_MARKERS.length; i++) MAP_MARKERS[i].remove();
+      MAP_MARKERS = [];
+      for (var j = 0; j < cities.length; j++) {
+        (function(city) {
+          var idx = bestOrder.indexOf(city.name);
+          var icon;
+          var zIndex = 100;
+          if (idx === 0) {
+            icon = getGoogleOriginIcon(city.name);
+            zIndex = 1000;
+          } else if (idx === bestOrder.length - 1) {
+            icon = getGoogleDestIcon(city.name);
+            zIndex = 1000;
+          } else if (idx > 0) {
+            icon = getGoogleWaypointIcon(idx + 1);
+            zIndex = 500;
+          } else {
+            icon = getNormalCityIcon();
+          }
+          var marker = L.marker([city.lat, city.lng], { icon: icon, zIndexOffset: zIndex }).addTo(MAP_INSTANCE);
+          marker.bindTooltip((idx >= 0 ? "Stop " + (idx + 1) + ": " : "") + city.name, { permanent: false, direction: "top" });
+          if (CURRENT_CITY_CLICK_HANDLER) {
+            marker.on("click", function() { CURRENT_CITY_CLICK_HANDLER(city.name); });
+          }
+          MAP_MARKERS.push(marker);
+        })(cities[j]);
+      }
+    }
+
+    window.addEventListener("load", function() {
+      setTimeout(initMap, 100);
+    });
+  </script>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+    const API = "http://localhost:5000/api";
+
+    function App() {
+      const [cities, setCities] = useState([]);
+      const [cityMap, setCityMap] = useState({});
+      const [connections, setConnections] = useState([]);
+      const [tab, setTab] = useState("shortest");
+      const [mode, setMode] = useState("driving");
+      const [optimizeBy, setOptimizeBy] = useState("distance");
+      const [closedConnections, setClosedConnections] = useState([]);
+      const [source, setSource] = useState("");
+      const [destination, setDestination] = useState("");
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState("");
+      const [result, setResult] = useState(null);
+      const [reachBudget, setReachBudget] = useState("500");
+      const [budgetType, setBudgetType] = useState("distance");
+      const [reachSource, setReachSource] = useState("");
+      const [reachResult, setReachResult] = useState(null);
+      const [tripStart, setTripStart] = useState("");
+      const [tripCities, setTripCities] = useState([]);
+      const [tripAdd, setTripAdd] = useState("");
+      const [tripResult, setTripResult] = useState(null);
+      const clickTarget = useRef("source");
+
+      useEffect(function() {
+        fetch(API + "/cities").then(function(r) { return r.json(); }).then(function(data) {
+          setCities(data);
+          var cm = {};
+          data.forEach(function(c) { cm[c.name] = c; });
+          setCityMap(cm);
+        });
+      }, []);
+
+      useEffect(function() {
+        fetch(API + "/connections?mode=" + mode).then(function(r) { return r.json(); }).then(function(data) {
+          setConnections(data);
+          setClosedConnections([]);
+        });
+      }, [mode]);
+
+      useEffect(function() {
+        if (cities.length === 0 || !MAP_INSTANCE) return;
+        var timer = setTimeout(function() {
+          if (!MAP_INSTANCE) return;
+          resetMarkers(cities, function(cityName) {
+            if (clickTarget.current === "source") {
+              setSource(cityName);
+              clickTarget.current = "destination";
+            } else {
+              setDestination(cityName);
+              clickTarget.current = "source";
+            }
+          });
+        }, 200);
+        return function() { clearTimeout(timer); };
+      }, [cities]);
+
+      function isClosed(conn) {
+        return closedConnections.some(function(c) {
+          return (c.from === conn.from && c.to === conn.to) || (c.from === conn.to && c.to === conn.from);
+        });
+      }
+
+      function toggleClosure(conn) {
+        var key = conn.from + "|" + conn.to;
+        var found = closedConnections.find(function(c) { return c.from + "|" + c.to === key; });
+        if (found) {
+          setClosedConnections(closedConnections.filter(function(c) { return c.from + "|" + c.to !== key; }));
+        } else {
+          setClosedConnections(closedConnections.concat([conn]));
+        }
+      }
+
+      function getUnreachable(srcCity) {
+        if (closedConnections.length === 0 || !srcCity) return [];
+        var closedSet = {};
+        closedConnections.forEach(function(c) {
+          closedSet[c.from + "|" + c.to] = true;
+          closedSet[c.to + "|" + c.from] = true;
+        });
+        var graph = {};
+        cities.forEach(function(c) { graph[c.name] = []; });
+        connections.forEach(function(conn) {
+          var key = conn.from + "|" + conn.to;
+          if (!closedSet[key]) {
+            if (graph[conn.from]) graph[conn.from].push(conn.to);
+            if (graph[conn.to]) graph[conn.to].push(conn.from);
+          }
+        });
+        var reachable = {};
+        var queue = [srcCity];
+        reachable[srcCity] = true;
+        while (queue.length > 0) {
+          var cur = queue.shift();
+          var nbrs = graph[cur] || [];
+          nbrs.forEach(function(n) {
+            if (!reachable[n]) { reachable[n] = true; queue.push(n); }
+          });
+        }
+        return cities.map(function(c) { return c.name; }).filter(function(c) { return !reachable[c]; });
+      }
+
+      async function findShortestPath() {
+        if (!source || !destination) { setError("Please select both source and destination."); return; }
+        setLoading(true); setError(""); setResult(null);
+        clearPolylines();
+        try {
+          var resp = await fetch(API + "/shortest-path", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ source, destination, mode, optimizeBy, closedConnections })
+          });
+          var data = await resp.json();
+          if (!resp.ok) { setError(data.error || "Error finding path."); setLoading(false); return; }
+          setResult(data);
+          setMapBadge(data.totalDistance + " km  ·  " + data.totalTime);
+          clearPolylines();
+          drawRoute(data.path, cityMap, MODE_COLORS[mode], mode === "flight", mode, function(cityName) {
+            if (clickTarget.current === "source") { setSource(cityName); clickTarget.current = "destination"; }
+            else { setDestination(cityName); clickTarget.current = "source"; }
+          });
+          drawClosureLines(closedConnections, cityMap);
+        } catch (e) {
+          setError("Cannot connect to backend. Make sure the server is running on port 5000.");
+        }
+        setLoading(false);
+      }
+
+      async function findReachable() {
+        if (!reachSource) { setError("Please select a source city."); return; }
+        setLoading(true); setError(""); setReachResult(null);
+        clearPolylines();
+        try {
+          var resp = await fetch(API + "/reachable", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ source: reachSource, mode, optimizeBy, budget: parseFloat(reachBudget), budgetType, closedConnections })
+          });
+          var data = await resp.json();
+          if (!resp.ok) { setError(data.error || "Error."); setLoading(false); return; }
+          setReachResult(data);
+          setMapBadge(data.reachable.length + " cities reachable");
+          var reachSet = {};
+          data.reachable.forEach(function(r) { reachSet[r.city] = true; });
+          highlightReachableMarkers(cities, reachSet, reachSource);
+          drawClosureLines(closedConnections, cityMap);
+        } catch (e) {
+          setError("Cannot connect to backend.");
+        }
+        setLoading(false);
+      }
+
+      async function optimizeTrip() {
+        if (!tripStart) { setError("Please select a start city."); return; }
+        if (tripCities.length < 1) { setError("Add at least 1 city to visit."); return; }
+        if (tripCities.length > 5) { setError("Maximum 5 cities allowed."); return; }
+        setLoading(true); setError(""); setTripResult(null);
+        clearPolylines();
+        try {
+          var resp = await fetch(API + "/trip-optimizer", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ start: tripStart, cities: tripCities, mode, optimizeBy, closedConnections })
+          });
+          var data = await resp.json();
+          if (!resp.ok) { setError(data.error || "Error."); setLoading(false); return; }
+          setTripResult(data);
+          setMapBadge(data.totalDistance + " km  ·  " + data.totalTime);
+          clearPolylines();
+          drawRoute(data.fullPath, cityMap, MODE_COLORS[mode], mode === "flight", mode, function(cityName) {
+            if (clickTarget.current === "source") { setSource(cityName); clickTarget.current = "destination"; }
+            else { setDestination(cityName); clickTarget.current = "source"; }
+          });
+          drawClosureLines(closedConnections, cityMap);
+          drawTripMarkers(cities, data.bestOrder);
+        } catch (e) {
+          setError("Cannot connect to backend.");
+        }
+        setLoading(false);
+      }
+
+      function addTripCity() {
+        if (!tripAdd) return;
+        if (tripAdd === tripStart) { setError("Cannot add start city to visit list."); return; }
+        if (tripCities.includes(tripAdd)) return;
+        if (tripCities.length >= 5) { setError("Maximum 5 cities allowed."); return; }
+        setTripCities(tripCities.concat([tripAdd]));
+        setTripAdd("");
+        setError("");
+      }
+
+      function removeTripCity(city) {
+        setTripCities(tripCities.filter(function(c) { return c !== city; }));
+      }
+
+      function resetAll() {
+        clearPolylines();
+        setResult(null); setReachResult(null); setTripResult(null); setError("");
+        setMapBadge("Select two cities");
+        resetMarkers(cities, function(cityName) {
+          if (clickTarget.current === "source") { setSource(cityName); clickTarget.current = "destination"; }
+          else { setDestination(cityName); clickTarget.current = "source"; }
+        });
+      }
+
+      var unreachable = [];
+      var srcForUnreach = tab === "shortest" ? source : (tab === "reachable" ? reachSource : tripStart);
+      if (closedConnections.length > 0 && srcForUnreach) {
+        unreachable = getUnreachable(srcForUnreach);
+      }
+
+      var modeIcons = { driving: "🚗", walking: "🚶", train: "🚂", flight: "✈️" };
+
+      return (
+        <React.Fragment>
+          <div className="left-panel-header">
+            <h1>🗺️ City Route Planner</h1>
+          </div>
+
+          <div className="tabs">
+            <button id="tab-shortest" className={"tab-btn" + (tab === "shortest" ? " active" : "")}
+              onClick={() => { setTab("shortest"); resetAll(); }}>Shortest Path</button>
+            <button id="tab-reachable" className={"tab-btn" + (tab === "reachable" ? " active" : "")}
+              onClick={() => { setTab("reachable"); resetAll(); setMapBadge("Select a city"); }}>Reachable Cities</button>
+            <button id="tab-trip" className={"tab-btn" + (tab === "trip" ? " active" : "")}
+              onClick={() => { setTab("trip"); resetAll(); setMapBadge("Plan your trip"); }}>Trip Optimizer</button>
+          </div>
+
+          <div className="panel-body">
+            <div className="form-group">
+              <div className="section-title">Travel Mode</div>
+              <div className="mode-grid">
+                {["driving","walking","train","flight"].map(function(m) {
+                  return (
+                    <label key={m} className={"mode-card" + (mode === m ? " selected" : "")} id={"mode-" + m}>
+                      <input type="radio" name="mode" value={m} checked={mode === m}
+                        onChange={() => { setMode(m); resetAll(); }} />
+                      <span className="mode-icon">{modeIcons[m]}</span>
+                      <span className="mode-name">{m.charAt(0).toUpperCase() + m.slice(1)}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="form-group">
+              <div className="section-title">Optimize By</div>
+              <div className="optimize-row">
+                <button id="opt-distance" className={"optimize-btn" + (optimizeBy === "distance" ? " active" : "")}
+                  onClick={() => setOptimizeBy("distance")}>📏 Distance</button>
+                <button id="opt-time" className={"optimize-btn" + (optimizeBy === "time" ? " active" : "")}
+                  onClick={() => setOptimizeBy("time")}>⏱ Time</button>
+              </div>
+            </div>
+
+            {tab === "shortest" && (
+              <React.Fragment>
+                <div className="form-group" style={{marginBottom:"6px"}}>
+                  <label className="form-label" htmlFor="src-select">Source City</label>
+                  <select id="src-select" className="form-select" value={source}
+                    onChange={e => { setSource(e.target.value); clickTarget.current = "destination"; }}>
+                    <option value="">— Select source —</option>
+                    {cities.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                  </select>
+                </div>
+                <button type="button" className="swap-btn" title="Reverse / Swap Direction"
+                  onClick={() => {
+                    var oldSrc = source;
+                    setSource(destination);
+                    setDestination(oldSrc);
+                  }}>
+                  ⇅
+                </button>
+                <div className="form-group" style={{marginTop:"-4px"}}>
+                  <label className="form-label" htmlFor="dst-select">Destination City</label>
+                  <select id="dst-select" className="form-select" value={destination}
+                    onChange={e => { setDestination(e.target.value); clickTarget.current = "source"; }}>
+                    <option value="">— Select destination —</option>
+                    {cities.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                  </select>
+                </div>
+              </React.Fragment>
+            )}
+
+            {tab === "reachable" && (
+              <React.Fragment>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="reach-src">Start City</label>
+                  <select id="reach-src" className="form-select" value={reachSource}
+                    onChange={e => setReachSource(e.target.value)}>
+                    <option value="">— Select city —</option>
+                    {cities.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <div className="section-title">Budget Type</div>
+                  <div className="optimize-row">
+                    <button className={"optimize-btn" + (budgetType === "distance" ? " active" : "")}
+                      onClick={() => setBudgetType("distance")}>📏 Distance (km)</button>
+                    <button className={"optimize-btn" + (budgetType === "time" ? " active" : "")}
+                      onClick={() => setBudgetType("time")}>⏱ Time (hrs)</button>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="budget-input">
+                    {budgetType === "distance" ? "Max Distance (km)" : "Max Time (hours)"}
+                  </label>
+                  <input id="budget-input" type="number" className="form-input" value={reachBudget}
+                    min="1" onChange={e => setReachBudget(e.target.value)}
+                    placeholder={budgetType === "distance" ? "e.g. 1000" : "e.g. 10"} />
+                </div>
+              </React.Fragment>
+            )}
+
+            {tab === "trip" && (
+              <React.Fragment>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="trip-start">Start City</label>
+                  <select id="trip-start" className="form-select" value={tripStart}
+                    onChange={e => { setTripStart(e.target.value); setTripCities([]); }}>
+                    <option value="">— Select start —</option>
+                    {cities.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div className="trip-cities">
+                  <div className="section-title">Cities to Visit (1–5)</div>
+                  <div className="add-city-row">
+                    <select className="form-select add-city-select" value={tripAdd}
+                      onChange={e => setTripAdd(e.target.value)}>
+                      <option value="">— Add city —</option>
+                      {cities.filter(c => c.name !== tripStart && !tripCities.includes(c.name))
+                        .map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                    </select>
+                    <button className="add-btn" onClick={addTripCity}>Add</button>
+                  </div>
+                  {tripCities.length > 0 && (
+                    <div className="city-tags">
+                      {tripCities.map(city => (
+                        <div key={city} className="city-tag">
+                          {city}
+                          <button onClick={() => removeTripCity(city)}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </React.Fragment>
+            )}
+
+            <div className="divider" />
+
+            <div className="closures-section">
+              <div className="section-title">🚧 Road Closure / Disaster Mode</div>
+              <div className="closure-list">
+                {connections.map(function(conn, i) {
+                  var closed = isClosed(conn);
+                  return (
+                    <div key={i} className={"closure-item" + (closed ? " closed" : "")}
+                      onClick={() => toggleClosure(conn)}>
+                      <input type="checkbox" checked={closed} readOnly />
+                      <span>{conn.from} — {conn.to} ({conn.dist} km)</span>
+                    </div>
+                  );
+                })}
+              </div>
+              {closedConnections.length > 0 && (
+                <button className="reopen-btn"
+                  onClick={() => { setClosedConnections([]); clearPolylines();
+                    resetMarkers(cities, function(cityName) {
+                      if (clickTarget.current === "source") { setSource(cityName); clickTarget.current = "destination"; }
+                      else { setDestination(cityName); clickTarget.current = "source"; }
+                    });
+                  }}>
+                  🔓 Reopen All ({closedConnections.length} closed)
+                </button>
+              )}
+            </div>
+
+            {tab === "shortest" && (
+              <button id="find-path-btn" className="find-btn" onClick={findShortestPath} disabled={loading}>
+                {loading ? "Finding..." : "Find Shortest Path"}
+              </button>
+            )}
+            {tab === "reachable" && (
+              <button id="find-reachable-btn" className="find-btn" onClick={findReachable} disabled={loading}>
+                {loading ? "Searching..." : "Find Reachable Cities"}
+              </button>
+            )}
+            {tab === "trip" && (
+              <button id="optimize-trip-btn" className="find-btn" onClick={optimizeTrip} disabled={loading}>
+                {loading ? "Optimizing..." : "Optimize Trip 🧳"}
+              </button>
+            )}
+
+            {loading && (
+              <div className="loading-box">
+                <span className="spinner"></span>Computing with Dijkstra's algorithm...
+              </div>
+            )}
+
+            {error && <div className="error-box">⚠️ {error}</div>}
+
+            {tab === "shortest" && result && (
+              <div className="result-box">
+                <div className="result-path">
+                  {result.path.map(function(city, i) {
+                    return (
+                      <React.Fragment key={city}>
+                        <span className="path-city">{city}</span>
+                        {i < result.path.length - 1 && <span className="path-arrow">→</span>}
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+                <div className="result-stats">
+                  <div className="stat-card">
+                    <div className="stat-value">{result.totalDistance} km</div>
+                    <div className="stat-label">Total Distance</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-value">{result.totalTime}</div>
+                    <div className="stat-label">Total Time</div>
+                  </div>
+                </div>
+                <div style={{marginTop:"10px", fontSize:"12px", color:"#1d4ed8", background:"#eff6ff", border:"1px solid #bfdbfe", borderRadius:"8px", padding:"8px 12px", display:"flex", alignItems:"center", gap:"7px"}}>
+                  <span>🛣️</span>
+                  <span><strong>Google Maps Navigation:</strong> Real highway geometry & turns traced on map.</span>
+                </div>
+                {unreachable.length > 0 && (
+                  <div className="unreachable-box" style={{marginTop:"12px"}}>
+                    <h4>⚠️ Cities now unreachable from {source}</h4>
+                    <div className="unreachable-list">
+                      {unreachable.map(c => <span key={c} className="unreachable-tag">{c}</span>)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {tab === "reachable" && reachResult && (
+              <React.Fragment>
+                {unreachable.length > 0 && (
+                  <div className="unreachable-box">
+                    <h4>⚠️ Cities now unreachable from {reachSource}</h4>
+                    <div className="unreachable-list">
+                      {unreachable.map(c => <span key={c} className="unreachable-tag">{c}</span>)}
+                    </div>
+                  </div>
+                )}
+                <div className="table-wrap">
+                  <table className="reachable-table">
+                    <thead><tr><th>#</th><th>City</th><th>Distance</th><th>Time</th></tr></thead>
+                    <tbody>
+                      {reachResult.reachable.map(function(r, i) {
+                        return (
+                          <tr key={r.city} style={{cursor:"pointer"}} title="Click to view road route"
+                            onClick={() => {
+                              if (r.path) {
+                                drawRoute(r.path, cityMap, MODE_COLORS[mode], mode === "flight", mode, function(cityName) {
+                                  setReachSource(cityName);
+                                });
+                              }
+                            }}>
+                            <td>{i+1}</td><td>{r.city}</td>
+                            <td>{r.distance} km</td><td>{r.time}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </React.Fragment>
+            )}
+
+            {tab === "trip" && tripResult && (
+              <div className="trip-result">
+                <div className="section-title" style={{marginBottom:"8px"}}>Best Order</div>
+                <div className="trip-order">
+                  {tripResult.bestOrder.map(function(city, i) {
+                    return (
+                      <React.Fragment key={city}>
+                        <div className="trip-stop">
+                          <div className="stop-num">{i+1}</div>
+                          <div className="stop-name">{city}</div>
+                        </div>
+                        {i < tripResult.bestOrder.length - 1 && <span className="trip-arrow">→</span>}
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+                <div className="result-stats">
+                  <div className="stat-card">
+                    <div className="stat-value">{tripResult.totalDistance} km</div>
+                    <div className="stat-label">Total Distance</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-value">{tripResult.totalTime}</div>
+                    <div className="stat-label">Total Time</div>
+                  </div>
+                </div>
+                {unreachable.length > 0 && (
+                  <div className="unreachable-box" style={{marginTop:"12px"}}>
+                    <h4>⚠️ Cities now unreachable from {tripStart}</h4>
+                    <div className="unreachable-list">
+                      {unreachable.map(c => <span key={c} className="unreachable-tag">{c}</span>)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </React.Fragment>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("react-root"));
+    root.render(<App />);
+  </script>
+</body>
+</html>
